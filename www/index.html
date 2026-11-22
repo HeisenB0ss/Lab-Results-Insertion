@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>דף תוצאות מעבדה</title>
+<meta name="theme-color" content="#0a6c80">
+<script src="libs/xlsx.full.min.js"></script>
+<style>
+/* layout idea: phone-first column; table editor on top, numeric pad docked at the bottom */
+:root{
+  --bg:#f2f5f7; --surface:#ffffff; --ink:#13232e; --muted:#5d6e7a; --line:#d3dce2;
+  --accent:#0a6c80; --accent-ink:#ffffff; --accent-soft:#dff0f4;
+  --bad:#b3261e; --bad-soft:#fbe4e2; --ok:#17794a; --ok-soft:#dff3e8; --sel:#fff3c4;
+  --font:system-ui,-apple-system,'Segoe UI',Arial,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1a21; --surface:#17252e; --ink:#e7eef2; --muted:#93a6b2; --line:#2b3d49;
+    --accent:#4fb7cb; --accent-ink:#06222a; --accent-soft:#17383f;
+    --bad:#ff8f86; --bad-soft:#3d1f1d; --ok:#59d08f; --ok-soft:#173a29; --sel:#4a4217;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f1a21; --surface:#17252e; --ink:#e7eef2; --muted:#93a6b2; --line:#2b3d49;
+  --accent:#4fb7cb; --accent-ink:#06222a; --accent-soft:#17383f;
+  --bad:#ff8f86; --bad-soft:#3d1f1d; --ok:#59d08f; --ok-soft:#173a29; --sel:#4a4217;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font-size:16px;line-height:1.4;-webkit-text-size-adjust:100%}
+button{font:inherit;color:inherit;cursor:pointer}
+input,select,textarea{font:inherit;color:var(--ink)}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+#app{max-width:760px;margin:0 auto;padding:0 16px 24px;min-height:100%}
+.topbar{position:sticky;top:0;z-index:20;background:var(--bg);display:flex;align-items:center;gap:8px;padding:12px 0 8px}
+.topbar h1{font-size:20px;margin:0;flex:1;font-weight:700;text-wrap:balance}
+.iconbtn{border:1px solid var(--line);background:var(--surface);border-radius:12px;min-height:44px;min-width:44px;padding:0 14px;font-weight:500}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:12px;min-height:48px;padding:0 18px;font-weight:500}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:700}
+.btn.danger{color:var(--bad);border-color:var(--bad)}
+.btn.block{width:100%}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px 16px}
+.stack{display:flex;flex-direction:column;gap:12px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.muted{color:var(--muted);font-size:14px}
+.tpl{display:flex;align-items:center;gap:12px;width:100%;text-align:right;min-height:68px}
+.tpl .name{font-weight:700;font-size:18px}
+.tpl .meta{color:var(--muted);font-size:14px}
+.pill{display:inline-block;padding:2px 10px;border-radius:99px;font-size:13px;background:var(--accent-soft);color:var(--accent);font-weight:500}
+.pill.ok{background:var(--ok-soft);color:var(--ok)}
+.tabs{display:flex;gap:4px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:4px;margin-bottom:12px}
+.tabs button{flex:1;border:0;background:transparent;border-radius:10px;min-height:44px;font-weight:500}
+.tabs button[aria-selected="true"]{background:var(--accent);color:var(--accent-ink);font-weight:700}
+label.f{display:flex;flex-direction:column;gap:6px;font-weight:500;font-size:14px}
+.in{border:1px solid var(--line);background:var(--bg);border-radius:12px;min-height:48px;padding:8px 12px;width:100%}
+textarea.in{min-height:84px;resize:vertical}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--bg);border-radius:99px;padding:6px 12px;min-height:36px;font-size:14px}
+.chip button{border:0;background:transparent;font-size:18px;line-height:1;padding:0 2px;color:var(--muted)}
+.gridwrap{overflow-x:auto;border:1px solid var(--line);border-radius:14px;background:var(--surface)}
+table.grid{border-collapse:separate;border-spacing:0;width:100%}
+.grid th,.grid td{border-bottom:1px solid var(--line);border-inline-start:1px solid var(--line);padding:6px 8px;text-align:center;min-width:84px;height:54px;font-variant-numeric:tabular-nums}
+.grid thead th{background:var(--accent-soft);color:var(--ink);font-weight:700;position:sticky;top:0}
+.grid th small{display:block;font-weight:400;color:var(--muted);font-size:12px;direction:ltr}
+.grid th.rowh,.grid td.rowh{position:sticky;right:0;z-index:2;background:var(--surface);text-align:right;min-width:112px;max-width:150px;font-weight:700;border-inline-start:0;box-shadow:-1px 0 0 var(--line) inset}
+.grid thead th.rowh{background:var(--accent-soft);z-index:3}
+.grid td.cell{cursor:pointer;font-size:19px;direction:ltr}
+.grid td.cell.sel{background:var(--sel);box-shadow:inset 0 0 0 3px var(--accent)}
+.grid td.cell.bad{background:var(--bad-soft);color:var(--bad)}
+.grid td.cell.txt{direction:rtl;font-size:16px}
+.grid .edit{cursor:pointer;background:var(--bg)}
+.grid .add{color:var(--accent);font-weight:700;cursor:pointer}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:30;background:var(--surface);border-top:1px solid var(--line);box-shadow:0 -8px 24px rgba(0,0,0,.12);padding:10px 12px calc(10px + env(safe-area-inset-bottom));}
+.sheet-in{max-width:760px;margin:0 auto}
+.sheet .who{display:flex;justify-content:space-between;gap:8px;font-size:14px;color:var(--muted);margin-bottom:6px}
+.sheet .who b{color:var(--ink)}
+.disp{display:flex;gap:8px;align-items:stretch;margin-bottom:8px}
+.disp .val{flex:1;border:2px solid var(--accent);border-radius:12px;padding:6px 14px;font-size:28px;font-weight:700;direction:ltr;text-align:left;min-height:56px;display:flex;align-items:center;justify-content:space-between;font-variant-numeric:tabular-nums}
+.disp .val span.u{font-size:15px;font-weight:400;color:var(--muted)}
+.pad{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;direction:ltr}
+.pad button{min-height:56px;border-radius:14px;border:1px solid var(--line);background:var(--bg);font-size:26px;font-weight:500}
+.pad button:active{background:var(--accent-soft)}
+.pad .fn{font-size:17px;font-weight:700}
+.pad .go{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);grid-row:span 2;font-size:19px;font-weight:700}
+.pad .span2{grid-column:span 2}
+.spacer{height:var(--sheet-h,0px)}
+.banner{border-radius:12px;padding:10px 14px;font-size:15px}
+.banner.warn{background:var(--bad-soft);color:var(--bad)}
+.banner.ok{background:var(--ok-soft);color:var(--ok)}
+.banner.info{background:var(--accent-soft);color:var(--ink)}
+.overlay{position:fixed;inset:0;background:rgba(5,15,22,.55);z-index:50;display:flex;align-items:flex-end;justify-content:center}
+.dialog{background:var(--surface);width:100%;max-width:560px;border-radius:20px 20px 0 0;padding:18px 16px calc(16px + env(safe-area-inset-bottom));max-height:90%;overflow:auto}
+.dialog h2{margin:0 0 12px;font-size:19px}
+.dialog .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.dialog .actions .btn{flex:1;min-width:110px}
+.steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.steps li{display:flex;gap:10px;align-items:center}
+.dot{width:12px;height:12px;border-radius:50%;background:var(--line);flex:none}
+.dot.run{background:var(--accent)}.dot.done{background:var(--ok)}.dot.err{background:var(--bad)}
+.ltr{direction:ltr;text-align:left}
+.pv-title{font-size:20px;font-weight:700;margin:0}
+@media (prefers-reduced-motion:no-preference){.sheet{animation:up .15s ease-out}@keyframes up{from{transform:translateY(20px);opacity:.6}to{transform:none;opacity:1}}}
+</style>
+</head>
+<body>
+<div id="app" aria-live="polite"></div>
+<div id="layer"></div>
+
+<script>
+(function(){
+'use strict';
+
+/* ---------- helpers ---------- */
+var $app=document.getElementById('app'), $layer=document.getElementById('layer');
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function uid(){return Math.random().toString(36).slice(2,8)+Date.now().toString(36).slice(-3);}
+function todayISO(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function fmtDate(iso,sep){sep=sep||'.';var p=(iso||todayISO()).split('-');return p[2]+sep+p[1]+sep+p[0];}
+function cleanFile(s){return String(s).replace(/[\\\/:*?"<>|]+/g,' ').replace(/\s+/g,' ').trim().slice(0,120)||'תוצאות';}
+var NUM_RE=/^-?(\d+\.?\d*|\.\d+)$/;
+function isNumOk(v){return v===''||NUM_RE.test(v);}
+var EMAIL_RE=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/* ---------- state ---------- */
+var DEFAULT_RECIP='yakir@flow-tech.co.il';
+function mkTpl(name,rowLabel,rows,cols){
+  return {id:uid(),name:name,rowLabel:rowLabel,
+    rows:rows.map(function(n){return {id:uid(),name:n};}),
+    columns:cols.map(function(c){return {id:uid(),name:c[0],unit:c[1],type:c[2]||'num'};}),
+    subject:'{name} - {date}',recipients:[DEFAULT_RECIP],intro:'',filename:'{name} {date}'};
+}
+function defaultState(){
+  return {v:1,savedAt:0,dir:'row',
+    settings:{},
+    templates:[
+      mkTpl('דיגום מים - דוודים','נקודת דיגום',['מי דוד','עיבוי','מי הזנה','מי DI'],[['pH',''],['מוליכות','µS/cm'],['פוספט','ppm'],['סיליקה','ppb'],['ברזל','ppb']]),
+      mkTpl('פיילוט ממברנות','זרם',['Feed','MC1','MC2','MC3'],[['P2O5','%'],['צפיפות','g/mL'],['TOC','ppm'],['מוצקים','%']])
+    ],
+    entries:{}};
+}
+var S=defaultState();
+var UI={view:'home',tplId:null,tab:'fill',edit:false,sel:null,send:null,dbStatus:'במכשיר הזה'};
+
+function tpl(){return S.templates.find(function(t){return t.id===UI.tplId;});}
+function entry(t){
+  var e=S.entries[t.id];
+  if(!e){e=S.entries[t.id]={date:todayISO(),vals:{},sentAt:null};}
+  return e;
+}
+function key(r,c){return r.id+'|'+c.id;}
+
+/* ---------- persistence ---------- */
+var LS='labsheet.v1', saveTimer=null, dbRef=null;
+function loadLocal(){try{var j=localStorage.getItem(LS);if(j){var o=JSON.parse(j);if(o&&o.templates){S=o;}}}catch(e){}}
+function save(){
+  S.savedAt=Date.now();
+  clearTimeout(saveTimer);
+  saveTimer=setTimeout(function(){
+    var j=JSON.stringify(S);
+    try{localStorage.setItem(LS,j);}catch(e){}
+    if(dbRef){
+      Promise.resolve().then(function(){return dbRef.set({json:j,savedAt:S.savedAt});})
+        .then(function(){UI.dbStatus='נשמר גם בחשבון';paintStatus();})
+        .catch(function(){UI.dbStatus='מקומי בלבד';paintStatus();});
+    }
+  },350);
+}
+function paintStatus(){var el=document.getElementById('dbstat');if(el)el.textContent=UI.dbStatus;}
+function initDb(){}
+
+/* ---------- dialogs ---------- */
+function openDialog(cfg){
+  return new Promise(function(resolve){
+    var f=(cfg.fields||[]).map(function(fl,i){
+      var id='dlg_'+i, h='';
+      if(fl.type==='select'){
+        h='<label class="f">'+esc(fl.label)+'<select class="in" id="'+id+'">'+fl.options.map(function(o){return '<option value="'+esc(o[0])+'"'+(o[0]===fl.value?' selected':'')+'>'+esc(o[1])+'</option>';}).join('')+'</select></label>';
+      }else{
+        h='<label class="f">'+esc(fl.label)+'<input class="in'+(fl.ltr?' ltr':'')+'" id="'+id+'" type="text" value="'+esc(fl.value||'')+'" placeholder="'+esc(fl.placeholder||'')+'"'+(fl.mode?' inputmode="'+fl.mode+'"':'')+' autocomplete="off"></label>';
+      }
+      if(fl.suggest){h+='<div class="chips" style="margin-top:-4px">'+fl.suggest.map(function(s){return '<button type="button" class="chip" data-sug="'+i+'" data-v="'+esc(s)+'">'+esc(s)+'</button>';}).join('')+'</div>';}
+      return h;
+    }).join('');
+    var acts=(cfg.actions||[]).map(function(a,i){return '<button class="btn '+(a.kind||'')+'" data-act="'+i+'">'+esc(a.label)+'</button>';}).join('');
+    var o=document.createElement('div');o.className='overlay';
+    o.innerHTML='<div class="dialog" role="dialog" aria-modal="true" aria-label="'+esc(cfg.title)+'"><h2>'+esc(cfg.title)+'</h2>'+(cfg.text?'<p class="muted" style="margin-top:0">'+esc(cfg.text)+'</p>':'')+'<div class="stack">'+f+'</div><div class="actions">'+acts+'</div></div>';
+    $layer.appendChild(o);
+    var first=o.querySelector('input,select');if(first&&!cfg.noFocus){setTimeout(function(){first.focus();},50);}
+    function vals(){var v={};(cfg.fields||[]).forEach(function(fl,i){v[fl.id]=o.querySelector('#dlg_'+i).value;});return v;}
+    function close(res){o.remove();resolve(res);}
+    o.addEventListener('click',function(e){
+      var s=e.target.closest('[data-sug]');
+      if(s){var inp=o.querySelector('#dlg_'+s.dataset.sug);inp.value=s.dataset.v;return;}
+      var b=e.target.closest('[data-act]');
+      if(b){var a=cfg.actions[+b.dataset.act];close({action:a.value,values:vals()});return;}
+      if(e.target===o){close({action:'cancel',values:vals()});}
+    });
+    o.addEventListener('keydown',function(e){
+      if(e.key==='Enter'&&e.target.tagName==='INPUT'){var p=(cfg.actions||[]).findIndex(function(a){return a.kind==='primary';});if(p>=0){e.preventDefault();close({action:cfg.actions[p].value,values:vals()});}}
+      if(e.key==='Escape'){close({action:'cancel',values:vals()});}
+    });
+  });
+}
+function confirmDlg(title,text,yes,danger){
+  return openDialog({title:title,text:text,noFocus:true,actions:[{label:'ביטול',value:'cancel'},{label:yes,value:'yes',kind:danger?'danger':'primary'}]}).then(function(r){return r.action==='yes';});
+}
+
+/* ---------- structure editing ---------- */
+var UNITS=['ppm','ppb','µS/cm','mS/cm','%','g/L','mg/L','g/mL','°C','NTU','mV','bar','m³/h'];
+function editColumn(t,col){
+  var isNew=!col;
+  var acts=[{label:'ביטול',value:'cancel'}];
+  if(!isNew){acts.push({label:'מחק טור',value:'del',kind:'danger'});acts.push({label:'← הזז שמאלה',value:'left'});acts.push({label:'→ הזז ימינה',value:'right'});}
+  acts.push({label:isNew?'הוסף טור':'שמור',value:'ok',kind:'primary'});
+  return openDialog({title:isNew?'טור חדש (פרמטר)':'עריכת טור',fields:[
+    {id:'name',label:'שם הפרמטר',value:col?col.name:'',placeholder:'למשל pH'},
+    {id:'unit',label:'יחידה',value:col?col.unit:'',placeholder:'ריק אם אין',suggest:UNITS,ltr:true},
+    {id:'type',label:'סוג נתון',type:'select',value:col?col.type:'num',options:[['num','מספר'],['text','טקסט']]}
+  ],actions:acts}).then(function(r){
+    if(r.action==='cancel')return;
+    var v=r.values;
+    if(r.action==='del'){
+      return confirmDlg('למחוק את הטור?','הערכים שהוזנו בטור "'+col.name+'" יימחקו.','מחק',true).then(function(y){
+        if(!y)return;
+        t.columns=t.columns.filter(function(c){return c!==col;});
+        var e=entry(t);Object.keys(e.vals).forEach(function(k){if(k.split('|')[1]===col.id)delete e.vals[k];});
+        UI.sel=null;save();render();
+      });
+    }
+    if(r.action==='left'||r.action==='right'){
+      var i=t.columns.indexOf(col),j=r.action==='left'?i-1:i+1; // in RTL "left" in table = later column
+      j=r.action==='left'?i+1:i-1;
+      if(j>=0&&j<t.columns.length){t.columns.splice(i,1);t.columns.splice(j,0,col);UI.sel=null;save();render();}
+      return;
+    }
+    var name=v.name.trim();if(!name){return;}
+    if(isNew){t.columns.push({id:uid(),name:name,unit:v.unit.trim(),type:v.type});}
+    else{col.name=name;col.unit=v.unit.trim();col.type=v.type;}
+    save();render();
+  });
+}
+function editRow(t,row){
+  var isNew=!row;
+  var acts=[{label:'ביטול',value:'cancel'}];
+  if(!isNew){acts.push({label:'מחק שורה',value:'del',kind:'danger'});acts.push({label:'▲',value:'up'});acts.push({label:'▼',value:'down'});}
+  acts.push({label:isNew?'הוסף שורה':'שמור',value:'ok',kind:'primary'});
+  return openDialog({title:isNew?'שורה חדשה':'עריכת שורה',fields:[
+    {id:'name',label:(t.rowLabel||'שם השורה'),value:row?row.name:'',placeholder:'למשל מי דוד'}
+  ],actions:acts}).then(function(r){
+    if(r.action==='cancel')return;
+    if(r.action==='del'){
+      return confirmDlg('למחוק את השורה?','הערכים שהוזנו בשורה "'+row.name+'" יימחקו.','מחק',true).then(function(y){
+        if(!y)return;
+        t.rows=t.rows.filter(function(x){return x!==row;});
+        var e=entry(t);Object.keys(e.vals).forEach(function(k){if(k.split('|')[0]===row.id)delete e.vals[k];});
+        UI.sel=null;save();render();
+      });
+    }
+    if(r.action==='up'||r.action==='down'){
+      var i=t.rows.indexOf(row),j=r.action==='up'?i-1:i+1;
+      if(j>=0&&j<t.rows.length){t.rows.splice(i,1);t.rows.splice(j,0,row);UI.sel=null;save();render();}
+      return;
+    }
+    var name=r.values.name.trim();if(!name)return;
+    if(isNew)t.rows.push({id:uid(),name:name});else row.name=name;
+    save();render();
+  });
+}
+
+/* ---------- entry (keypad) ---------- */
+function curCell(t){
+  if(!UI.sel)return null;
+  var r=t.rows[UI.sel.r],c=t.columns[UI.sel.c];
+  return (r&&c)?{r:r,c:c}:null;
+}
+function setVal(t,cell,v){
+  var e=entry(t);
+  if(v==='')delete e.vals[key(cell.r,cell.c)];else e.vals[key(cell.r,cell.c)]=v;
+  e.sentAt=null;
+  save();
+}
+function getVal(t,cell){return entry(t).vals[key(cell.r,cell.c)]||'';}
+function paintCell(t){
+  var cell=curCell(t);if(!cell)return;
+  var td=document.querySelector('td.cell[data-r="'+UI.sel.r+'"][data-c="'+UI.sel.c+'"]');
+  var v=getVal(t,cell);
+  if(td){td.textContent=v;td.classList.toggle('bad',cell.c.type==='num'&&!isNumOk(v));}
+  var d=document.getElementById('valtxt');if(d)d.textContent=v.replace('-','−')||'—';
+}
+function move(t,step){
+  if(!UI.sel)return;
+  var R=t.rows.length,C=t.columns.length;if(!R||!C)return;
+  var r=UI.sel.r,c=UI.sel.c;
+  if(S.dir==='row'){c+=step;if(c>=C){c=0;r++;}if(c<0){c=C-1;r--;}}
+  else{r+=step;if(r>=R){r=0;c++;}if(r<0){r=R-1;c--;}}
+  if(r<0||c<0||r>=R||c>=C){UI.sel=null;render();return;}
+  select(r,c);
+}
+function select(r,c){
+  UI.sel={r:r,c:c};
+  render();
+  var td=document.querySelector('td.cell.sel');
+  if(td){td.scrollIntoView({block:'center',inline:'center'});}
+}
+function pad(k){
+  var t=tpl();if(!t)return;var cell=curCell(t);if(!cell)return;
+  var v=getVal(t,cell);
+  if(k>='0'&&k<='9'){if(v.length<14)v+=k;}
+  else if(k==='.'){if(v.indexOf('.')<0)v+=(v===''||v==='-')?'0.':'.';}
+  else if(k==='-'){v=v.charAt(0)==='-'?v.slice(1):'-'+v;}
+  else if(k==='bs'){v=v.slice(0,-1);}
+  else if(k==='clr'){v='';}
+  setVal(t,cell,v);paintCell(t);
+}
+
+/* ---------- views ---------- */
+function render(){
+  if(UI.view==='home')renderHome();else renderTpl();
+}
+function renderHome(){
+  var h='<div class="topbar"><h1>דף תוצאות מעבדה</h1></div><div class="stack">';
+  S.templates.forEach(function(t){
+    var e=S.entries[t.id],n=e?Object.keys(e.vals).length:0;
+    h+='<button class="card tpl" data-open="'+t.id+'"><span style="flex:1"><div class="name">'+esc(t.name)+'</div><div class="meta">'+t.rows.length+' שורות · '+t.columns.length+' פרמטרים</div></span>'+
+      (e&&e.sentAt?'<span class="pill ok">נשלח</span>':(n?'<span class="pill">'+n+' ערכים</span>':''))+'</button>';
+  });
+  h+='<button class="btn primary block" id="newTpl">+ תבנית חדשה</button>';
+  h+='<div class="banner info">שתי התבניות הראשונות הן דוגמה. אפשר לערוך אותן, לשכפל או למחוק.</div>';
+  h+='<div class="muted" style="text-align:center">התבניות והערכים נשמרים בטלפון הזה בלבד.</div></div>';
+  $app.innerHTML=h;
+  document.title='דף תוצאות מעבדה';
+}
+function renderTpl(){
+  var t=tpl();if(!t){UI.view='home';return renderHome();}
+  var e=entry(t);
+  var h='<div class="topbar"><button class="iconbtn" id="back" aria-label="חזרה">→ חזרה</button><h1>'+esc(t.name)+'</h1></div>';
+  h+='<div class="tabs" role="tablist">'+
+    [['fill','מילוי'],['preview','תצוגה ושיתוף'],['settings','הגדרות']].map(function(x){return '<button role="tab" data-tab="'+x[0]+'" aria-selected="'+(UI.tab===x[0])+'">'+x[1]+'</button>';}).join('')+'</div>';
+  if(UI.tab==='fill')h+=fillHtml(t,e);
+  else if(UI.tab==='preview')h+=previewHtml(t,e);
+  else h+=settingsHtml(t);
+  $app.innerHTML=h;
+  document.title=t.name;
+  syncSheet(t);
+}
+function fillHtml(t,e){
+  var h='<div class="stack">';
+  h+='<div class="row"><label class="f" style="flex:1;min-width:150px">תאריך<input class="in" type="date" id="date" value="'+esc(e.date)+'"></label>'+
+     '<button class="btn" id="editToggle" style="align-self:flex-end">'+(UI.edit?'סיום עריכת מבנה':'עריכת מבנה')+'</button></div>';
+  if(UI.edit)h+='<div class="banner info">מצב עריכה: לחץ על כותרת טור או על שם שורה כדי לשנות שם, יחידה או למחוק.</div>';
+  h+='<div class="gridwrap"><table class="grid"><thead><tr><th class="rowh">'+esc(t.rowLabel||'')+'</th>';
+  t.columns.forEach(function(c,i){
+    h+='<th'+(UI.edit?' class="edit" data-ec="'+i+'"':'')+'>'+esc(c.name)+(c.unit?'<small>'+esc(c.unit)+'</small>':'')+'</th>';
+  });
+  if(UI.edit)h+='<th class="add" id="addCol">+ טור</th>';
+  h+='</tr></thead><tbody>';
+  t.rows.forEach(function(r,ri){
+    h+='<tr><td class="rowh'+(UI.edit?' edit':'')+'"'+(UI.edit?' data-er="'+ri+'"':'')+'>'+esc(r.name)+'</td>';
+    t.columns.forEach(function(c,ci){
+      var v=e.vals[key(r,c)]||'';
+      var cls='cell'+(c.type==='text'?' txt':'')+((UI.sel&&UI.sel.r===ri&&UI.sel.c===ci)?' sel':'')+((c.type==='num'&&!isNumOk(v))?' bad':'');
+      h+='<td class="'+cls+'" data-r="'+ri+'" data-c="'+ci+'">'+esc(v)+'</td>';
+    });
+    if(UI.edit)h+='<td></td>';
+    h+='</tr>';
+  });
+  if(!t.rows.length)h+='<tr><td class="rowh muted" colspan="'+(t.columns.length+1)+'">אין שורות</td></tr>';
+  h+='</tbody></table></div>';
+  if(UI.edit)h+='<button class="btn block" id="addRow">+ שורה</button>';
+  h+='<div class="row"><button class="btn" id="dirToggle">מעבר: '+(S.dir==='row'?'לאורך השורה':'במורד הטור')+'</button><button class="btn danger" id="clearAll">נקה את כל הערכים</button></div>';
+  h+='<div class="spacer"></div></div>';
+  return h;
+}
+function previewHtml(t,e){
+  var filled=Object.keys(e.vals).length;
+  var bad=[];
+  t.rows.forEach(function(r){t.columns.forEach(function(c){var v=e.vals[key(r,c)]||'';if(c.type==='num'&&!isNumOk(v))bad.push(r.name+' / '+c.name+': "'+v+'"');});});
+  var subj=fill(t.subject,t,e), file=cleanFile(fill(t.filename,t,e))+'.xlsx';
+  var h='<div class="stack">';
+  h+='<div class="card stack"><div><div class="muted">נמענים (תזכורת בלבד)</div><div class="chips" style="margin-top:6px">'+(t.recipients.length?t.recipients.map(function(r){return '<span class="chip ltr">'+esc(r)+'</span>';}).join(''):'<span class="muted">לא הוגדרו נמענים (בלשונית הגדרות)</span>')+'</div></div>'+
+     '<div><div class="muted">כותרת המייל</div><div style="font-weight:700">'+esc(subj)+'</div></div>'+
+     '<div><div class="muted">קובץ אקסל</div><div style="font-weight:500">'+esc(file)+'</div></div></div>';
+  h+='<div class="card"><p class="pv-title">'+esc(t.name)+'</p><div class="muted" style="margin-bottom:8px">תאריך: '+fmtDate(e.date)+'</div><div class="gridwrap"><table class="grid"><thead><tr><th class="rowh">'+esc(t.rowLabel||'')+'</th>'+
+    t.columns.map(function(c){return '<th>'+esc(c.name)+(c.unit?'<small>'+esc(c.unit)+'</small>':'')+'</th>';}).join('')+'</tr></thead><tbody>'+
+    t.rows.map(function(r){return '<tr><td class="rowh">'+esc(r.name)+'</td>'+t.columns.map(function(c){var v=e.vals[key(r,c)]||'';return '<td class="cell'+(c.type==='text'?' txt':'')+((c.type==='num'&&!isNumOk(v))?' bad':'')+'" style="cursor:default">'+esc(v)+'</td>';}).join('')+'</tr>';}).join('')+
+    '</tbody></table></div></div>';
+  if(!filled)h+='<div class="banner warn">עדיין לא הוזנו ערכים.</div>';
+  if(bad.length)h+='<div class="banner warn">ערך לא תקין בטור מספרי: '+esc(bad.join(' ; '))+'. יש לתקן לפני שליחה.</div>';
+  h+='<div class="banner info">השיתוף פותח את תפריט Android, ושם בוחרים Outlook, Gmail, WhatsApp או כל אפליקציה אחרת עם האקסל מצורף.</div>';
+  var s=UI.send;
+  if(s&&s.msg)h+='<div class="banner '+(s.ok?'ok':'warn')+'">'+esc(s.msg)+'</div>';
+  h+='<button class="btn primary block" id="dlXlsx"'+((bad.length||!filled)?' disabled':'')+'>שתף קובץ אקסל</button>';
+  h+='<button class="btn block" id="backFill">חזרה לעריכה</button></div>';
+  return h;
+}
+function settingsHtml(t){
+  var h='<div class="stack">';
+  h+='<div class="card stack">'+
+    '<label class="f">שם התבנית (מופיע בראש הטבלה)<input class="in" id="s_name" value="'+esc(t.name)+'"></label>'+
+    '<label class="f">כותרת לעמודת השורות<input class="in" id="s_rowlabel" value="'+esc(t.rowLabel||'')+'" placeholder="למשל נקודת דיגום"></label>'+
+    '</div>';
+  h+='<div class="card stack"><div style="font-weight:700">נמענים (תזכורת בלבד, לא נשלח אוטומטית)</div><div class="chips" id="recips">'+t.recipients.map(function(r,i){return '<span class="chip ltr">'+esc(r)+'<button data-rmr="'+i+'" aria-label="הסר">×</button></span>';}).join('')+'</div>'+
+    '<div class="row"><input class="in ltr" id="newRecip" style="flex:1;min-width:180px" type="email" inputmode="email" placeholder="name@company.com"><button class="btn" id="addRecip">הוסף</button></div><div id="recipErr" class="muted" style="color:var(--bad)"></div></div>';
+  h+='<div class="card stack">'+
+    '<label class="f">כותרת המייל<input class="in" id="s_subject" value="'+esc(t.subject)+'"></label>'+
+    '<label class="f">שם קובץ האקסל<input class="in" id="s_file" value="'+esc(t.filename)+'"></label>'+
+    '<div class="muted">אפשר להשתמש ב-{name} לשם התבנית וב-{date} לתאריך.</div>'+
+    '<label class="f">שורת פתיחה בגוף המייל (לא חובה)<textarea class="in" id="s_intro">'+esc(t.intro)+'</textarea></label>'+'</div>';
+  h+='<div class="row"><button class="btn" id="dupTpl">שכפל תבנית</button><button class="btn danger" id="delTpl">מחק תבנית</button></div>';
+  h+='</div>';
+  return h;
+}
+function syncSheet(t){
+  var old=document.getElementById('sheet');if(old)old.remove();
+  document.documentElement.style.setProperty('--sheet-h','0px');
+  if(UI.tab!=='fill'||!UI.sel)return;
+  var cell=curCell(t);if(!cell){UI.sel=null;return;}
+  var v=getVal(t,cell);
+  var s=document.createElement('div');s.id='sheet';s.className='sheet';
+  var isNum=cell.c.type==='num';
+  var head='<div class="who"><span><b>'+esc(cell.r.name)+'</b> · '+esc(cell.c.name)+'</span><span>'+esc(cell.c.unit||'')+'</span></div>';
+  var nav='<button class="btn" id="kPrev" style="min-width:76px">קודם</button>';
+  var body;
+  if(isNum){
+    body=head+'<div class="disp"><div class="val"><span id="valtxt">'+(esc(v.replace('-','−'))||'—')+'</span><span class="u">'+esc(cell.c.unit||'')+'</span></div>'+nav+'</div>'+
+      '<div class="pad">'+
+      ['7','8','9'].map(pk).join('')+'<button class="fn" data-k="bs" aria-label="מחק תו">⌫</button>'+
+      ['4','5','6'].map(pk).join('')+'<button class="fn" data-k="clr">נקה</button>'+
+      ['1','2','3'].map(pk).join('')+'<button class="go" id="kNext">הבא</button>'+
+      '<button data-k="-">±</button><button data-k="0">0</button><button data-k=".">.</button>'+
+      '</div>';
+  }else{
+    body=head+'<div class="disp"><input class="in" id="txtIn" style="flex:1;font-size:20px" value="'+esc(v)+'" enterkeyhint="next" autocomplete="off">'+nav+'<button class="btn primary" id="kNext">הבא</button></div><button class="btn block" id="kClose">סגור</button>';
+  }
+  s.innerHTML='<div class="sheet-in">'+body+'</div>';
+  document.body.appendChild(s);
+  document.documentElement.style.setProperty('--sheet-h',(s.offsetHeight+16)+'px');
+  if(!isNum){var ti=document.getElementById('txtIn');ti.focus();}
+}
+function pk(k){return '<button data-k="'+k+'">'+k+'</button>';}
+
+/* ---------- output ---------- */
+function fill(str,t,e){return String(str||'').replace(/\{name\}/g,t.name).replace(/\{date\}/g,fmtDate(e.date));}
+function cellOut(c,v){
+  v=(v||'').trim();if(!v)return '';
+  if(c.type==='num'){var n=Number(v.replace(',','.'));return isNaN(n)?v:n;}
+  return v;
+}
+function buildXlsx(t,e){
+  var head=[t.rowLabel||'נקודת דיגום'].concat(t.columns.map(function(c){return c.unit?c.name+' ('+c.unit+')':c.name;}));
+  var aoa=[[t.name],['תאריך: '+fmtDate(e.date)],[],head];
+  t.rows.forEach(function(r){aoa.push([r.name].concat(t.columns.map(function(c){return cellOut(c,e.vals[key(r,c)]);})));});
+  var ws=XLSX.utils.aoa_to_sheet(aoa);
+  ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:Math.max(0,head.length-1)}}];
+  ws['!cols']=head.map(function(h,i){return {wch:i===0?24:Math.max(12,String(h).length+2)};});
+  var wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,cleanFile(t.name).replace(/[\[\]]/g,'').slice(0,31)||'תוצאות');
+  wb.Workbook={Views:[{RTL:true}]};
+  return new Uint8Array(XLSX.write(wb,{bookType:'xlsx',type:'array'}));
+}
+function toB64(bytes){var s='',CH=0x8000;for(var i=0;i<bytes.length;i+=CH){s+=String.fromCharCode.apply(null,bytes.subarray(i,i+CH));}return btoa(s);}
+function textOf(res){
+  if(!res)return '';
+  var p=res.payload;
+  if(p&&typeof p==='object'&&p.webUrl)return String(p.webUrl);
+  var s=typeof p==='string'?p:'';
+  if(!s&&res.content)s=res.content.map(function(b){return b.text||'';}).join('\n');
+  if(!s)try{s=JSON.stringify(p||res);}catch(e){}
+  return s;
+}
+var XLSX_TYPE='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+function nativeShare(){
+  var C=window.Capacitor,P=C&&C.Plugins;
+  return (C&&C.isNativePlatform&&C.isNativePlatform()&&P&&P.Filesystem&&P.Share)?P:null;
+}
+function shareXlsx(t,e){
+  var subject=fill(t.subject,t,e),fn=cleanFile(fill(t.filename,t,e))+'.xlsx',bytes=buildXlsx(t,e),b64=toB64(bytes);
+  var P=nativeShare();
+  function say(ok,msg){UI.send={ok:ok,msg:msg};if(UI.tab==='preview')render();}
+  if(P){
+    function go(name){
+      return P.Filesystem.writeFile({path:name,data:b64,directory:'CACHE'}).then(function(r){
+        return P.Share.share({title:subject,text:t.name+' - '+fmtDate(e.date),files:[r.uri],dialogTitle:'שתף את האקסל'});
+      });
+    }
+    go(fn).catch(function(er){
+      if(er&&/cancel/i.test(er.message||''))return;
+      return go('lab-results-'+e.date+'.xlsx').catch(function(er2){if(er2&&/cancel/i.test(er2.message||''))return;say(false,'השיתוף נכשל: '+((er2&&er2.message)||'שגיאה לא ידועה'));});
+    });
+    return;
+  }
+  var file=new File([bytes],fn,{type:XLSX_TYPE});
+  if(navigator.canShare&&navigator.canShare({files:[file]})){navigator.share({files:[file],title:subject}).catch(function(){});return;}
+  var a=document.createElement('a');a.href=URL.createObjectURL(file);a.download=fn;document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},1500);
+}
+
+/* ---------- events ---------- */
+$app.addEventListener('click',function(ev){
+  var el=ev.target;
+  function q(sel){return el.closest(sel);}
+  var t=UI.tplId?tpl():null,x;
+  if((x=q('[data-open]'))){UI.view='tpl';UI.tplId=x.dataset.open;UI.tab='fill';UI.edit=false;UI.sel=null;UI.send=null;render();window.scrollTo(0,0);return;}
+  if(q('#newTpl')){
+    openDialog({title:'תבנית חדשה',fields:[{id:'name',label:'שם התבנית',placeholder:'למשל דיגום מי קירור'}],actions:[{label:'ביטול',value:'cancel'},{label:'צור',value:'ok',kind:'primary'}]}).then(function(r){
+      if(r.action!=='ok'||!r.values.name.trim())return;
+      var nt=mkTpl(r.values.name.trim(),'נקודת דיגום',['נקודה 1','נקודה 2'],[['pH',''],['מוליכות','µS/cm']]);
+      S.templates.push(nt);UI.view='tpl';UI.tplId=nt.id;UI.tab='fill';UI.edit=true;UI.sel=null;UI.send=null;save();render();
+    });return;
+  }
+  if(q('#back')){UI.view='home';UI.sel=null;UI.edit=false;UI.send=null;render();return;}
+  if(!t)return;
+  if((x=q('[data-tab]'))){UI.tab=x.dataset.tab;UI.sel=null;if(UI.tab!=='preview'&&UI.send&&!UI.send.busy)UI.send=null;render();window.scrollTo(0,0);return;}
+  if(q('#editToggle')){UI.edit=!UI.edit;UI.sel=null;render();return;}
+  if((x=q('[data-ec]'))){editColumn(t,t.columns[+x.dataset.ec]);return;}
+  if((x=q('[data-er]'))){editRow(t,t.rows[+x.dataset.er]);return;}
+  if(q('#addCol')){editColumn(t,null);return;}
+  if(q('#addRow')){editRow(t,null);return;}
+  if((x=q('td.cell[data-r]'))&&!UI.edit){select(+x.dataset.r,+x.dataset.c);return;}
+  if(q('#dirToggle')){S.dir=S.dir==='row'?'col':'row';save();render();return;}
+  if(q('#clearAll')){confirmDlg('לנקות את כל הערכים?','כל הערכים בטופס "'+t.name+'" יימחקו. המבנה והגדרות התבנית נשארים.','נקה',true).then(function(y){if(!y)return;var e=entry(t);e.vals={};e.sentAt=null;e.date=todayISO();UI.sel=null;UI.send=null;save();render();});return;}
+  if(q('#backFill')){UI.tab='fill';render();return;}
+  if(q('#dlXlsx')){shareXlsx(t,entry(t));return;}
+  if((x=q('[data-rmr]'))){t.recipients.splice(+x.dataset.rmr,1);save();render();return;}
+  if(q('#addRecip')){addRecip(t);return;}
+  if(q('#dupTpl')){
+    var c=JSON.parse(JSON.stringify(t));c.id=uid();c.name=t.name+' (עותק)';
+    c.rows.forEach(function(r){r.id=uid();});c.columns.forEach(function(k){k.id=uid();});
+    S.templates.push(c);UI.tplId=c.id;UI.tab='fill';UI.send=null;save();render();return;
+  }
+  if(q('#delTpl')){confirmDlg('למחוק את התבנית?','התבנית "'+t.name+'" והערכים שבה יימחקו.','מחק',true).then(function(y){if(!y)return;S.templates=S.templates.filter(function(z){return z!==t;});delete S.entries[t.id];UI.view='home';UI.tplId=null;UI.sel=null;save();render();});return;}
+});
+function addRecip(t){
+  var inp=document.getElementById('newRecip'),err=document.getElementById('recipErr');
+  var v=inp.value.trim();
+  if(!EMAIL_RE.test(v)){err.textContent='כתובת מייל לא תקינה.';return;}
+  if(t.recipients.indexOf(v)>=0){err.textContent='הכתובת כבר ברשימה.';return;}
+  t.recipients.push(v);save();render();
+}
+$app.addEventListener('input',function(ev){
+  var t=UI.tplId?tpl():null,id=ev.target.id;
+  if(!t)return;
+  var e=entry(t);
+  if(id==='date'){e.date=ev.target.value||todayISO();save();return;}
+  if(id==='s_name'){t.name=ev.target.value;document.title=t.name;var h1=document.querySelector('.topbar h1');if(h1)h1.textContent=t.name;save();return;}
+  if(id==='s_rowlabel'){t.rowLabel=ev.target.value;save();return;}
+  if(id==='s_subject'){t.subject=ev.target.value;save();return;}
+  if(id==='s_file'){t.filename=ev.target.value;save();return;}
+  if(id==='s_intro'){t.intro=ev.target.value;save();return;}
+});
+$app.addEventListener('keydown',function(ev){
+  if(ev.target.id==='newRecip'&&ev.key==='Enter'){ev.preventDefault();addRecip(tpl());}
+});
+$layer.parentNode.addEventListener('click',function(ev){
+  var sh=ev.target.closest('#sheet');if(!sh)return;
+  var t=tpl();if(!t)return;
+  var k=ev.target.closest('[data-k]');
+  if(k){pad(k.dataset.k);return;}
+  if(ev.target.closest('#kNext')){move(t,1);return;}
+  if(ev.target.closest('#kPrev')){move(t,-1);return;}
+  if(ev.target.closest('#kClose')){UI.sel=null;render();return;}
+});
+document.addEventListener('input',function(ev){
+  if(ev.target.id!=='txtIn')return;
+  var t=tpl(),cell=t&&curCell(t);if(!cell)return;
+  setVal(t,cell,ev.target.value);
+  var td=document.querySelector('td.cell.sel');if(td)td.textContent=ev.target.value;
+});
+document.addEventListener('keydown',function(ev){
+  if(ev.target.id==='txtIn'&&ev.key==='Enter'){ev.preventDefault();var t=tpl();if(t)move(t,1);}
+});
+window.addEventListener('resize',function(){var s=document.getElementById('sheet');if(s)document.documentElement.style.setProperty('--sheet-h',(s.offsetHeight+16)+'px');});
+
+/* ---------- start ---------- */
+loadLocal();
+render();
+})();
+</script>
+</body>
+</html>
